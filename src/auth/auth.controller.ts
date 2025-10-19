@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   Controller,
   Post,
@@ -9,13 +8,26 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import type { Response, Request } from 'express';
+import type { Response, Request as ExpressRequest } from 'express';
 import { AuthService } from './auth.service';
 import { AuthGuard } from '@nestjs/passport';
+import { JwtPayloadInterface } from 'src/interfaces/authInterfaces';
 
-interface JwtPayload {
-  sub: string;
+// DTO для логина и регистрации
+export class LoginDto {
   email: string;
+  password: string;
+}
+
+export class RegisterDto {
+  email: string;
+  password: string;
+  name: string;
+}
+
+interface RequestWithUserAndCookies extends ExpressRequest {
+  user: JwtPayloadInterface;
+  cookies: Record<string, string>;
 }
 
 @Controller('auth')
@@ -24,7 +36,7 @@ export class AuthController {
 
   @Post('login')
   async login(
-    @Body() body: { email: string; password: string },
+    @Body() body: LoginDto,
     @Res({ passthrough: true }) res: Response,
   ) {
     try {
@@ -63,7 +75,7 @@ export class AuthController {
 
   @Post('register')
   async register(
-    @Body() body: { email: string; password: string; name: string },
+    @Body() body: RegisterDto,
     @Res({ passthrough: true }) res: Response,
   ) {
     try {
@@ -100,7 +112,7 @@ export class AuthController {
 
   @Post('refresh')
   async refresh(
-    @Req() req: Request,
+    @Req() req: RequestWithUserAndCookies,
     @Res({ passthrough: true }) res: Response,
   ) {
     const oldRefreshToken = req.cookies['refresh_token'];
@@ -111,10 +123,9 @@ export class AuthController {
     }
 
     try {
-      const userPayload = req.user as JwtPayload;
+      const userPayload = req.user;
       const { accessToken, refreshToken } = await this.authService.refresh(
-        userPayload?.sub,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+        userPayload.sub,
         oldRefreshToken,
       );
 
@@ -141,19 +152,21 @@ export class AuthController {
 
   @Post('logout')
   @UseGuards(AuthGuard('jwt'))
-  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    console.log('🍪 Cookies from request:', req.cookies);
-
+  async logout(
+    @Req() req: RequestWithUserAndCookies,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     try {
-      const userPayload = req.user as JwtPayload;
+      const userPayload = req.user;
       await this.authService.revokeRefreshToken(userPayload.sub);
 
       res.clearCookie('access_token');
       res.clearCookie('refresh_token');
 
       return { message: 'logged_out' };
-    } catch (err) {
-      const message = (err as Error).message;
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Internal server error';
       console.error('Logout error:', message);
       return res
         .status(HttpStatus.INTERNAL_SERVER_ERROR)

@@ -1,13 +1,15 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from 'src/users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from 'prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
-
-export interface AuthToken {
-  accessToken: string;
-  refreshToken: string;
-}
+import {
+  UserEntity,
+  RefreshTokenEntity,
+  AuthToken,
+} from 'src/interfaces/authInterfaces';
 
 @Injectable()
 export class AuthService {
@@ -17,8 +19,8 @@ export class AuthService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async validateUser(email: string, password: string) {
-    const user = await this.usersService.findByEmail(email);
+  async validateUser(email: string, password: string): Promise<UserEntity> {
+    const user = (await this.usersService.findByEmail(email)) as UserEntity;
     if (!user) throw new UnauthorizedException('User not found');
 
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
@@ -34,17 +36,19 @@ export class AuthService {
     const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
 
     try {
-      const createdToken = await this.prisma.refreshToken.create({
+      const createdToken = (await this.prisma.refreshToken.create({
         data: {
           userId,
           tokenHash: hashedRefreshToken,
           expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
-      });
+      })) as RefreshTokenEntity;
+
       console.log(' Refresh token saved in DB:', createdToken);
-    } catch (err) {
-      console.error(' Error saving refresh token:', err);
-      throw err;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      console.error(' Error saving refresh token:', message);
+      throw new Error(message);
     }
 
     return { accessToken, refreshToken };
@@ -60,17 +64,20 @@ export class AuthService {
     password: string;
     name: string;
   }): Promise<AuthToken> {
-    const existing = await this.usersService.findByEmail(dto.email);
+    const existing = (await this.usersService.findByEmail(
+      dto.email,
+    )) as UserEntity | null;
     if (existing) throw new UnauthorizedException('Email already in use');
 
-    const newUser = await this.usersService.create(dto);
+    const newUser = (await this.usersService.create(dto)) as UserEntity;
     return this.generateTokens(newUser.id, newUser.email);
   }
 
   async refresh(userId: string, oldRefreshToken: string): Promise<AuthToken> {
-    const tokenInDb = await this.prisma.refreshToken.findFirst({
+    const tokenInDb = (await this.prisma.refreshToken.findFirst({
       where: { userId },
-    });
+    })) as RefreshTokenEntity | null;
+
     if (!tokenInDb) throw new UnauthorizedException('Refresh token not found');
 
     const isValid = await bcrypt.compare(oldRefreshToken, tokenInDb.tokenHash);
@@ -78,7 +85,7 @@ export class AuthService {
 
     await this.prisma.refreshToken.delete({ where: { id: tokenInDb.id } });
 
-    const user = await this.usersService.findById(userId);
+    const user = (await this.usersService.findById(userId)) as UserEntity;
     if (!user) throw new UnauthorizedException('User not found');
 
     return this.generateTokens(user.id, user.email);
