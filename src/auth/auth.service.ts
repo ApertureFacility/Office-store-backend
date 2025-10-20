@@ -1,12 +1,10 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from 'src/users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from 'prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import {
-  UserEntity,
+  FullUserEntity,
   RefreshTokenEntity,
   AuthToken,
 } from 'src/interfaces/authInterfaces';
@@ -19,9 +17,12 @@ export class AuthService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async validateUser(email: string, password: string): Promise<UserEntity> {
-    const user = (await this.usersService.findByEmail(email)) as UserEntity;
-    if (!user) throw new UnauthorizedException('User not found');
+  async validateUser(email: string, password: string): Promise<FullUserEntity> {
+    const user = await this.usersService.findByEmail(email, true);
+
+    if (!user || !('passwordHash' in user)) {
+      throw new UnauthorizedException('User not found or password missing');
+    }
 
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) throw new UnauthorizedException('Invalid password');
@@ -33,23 +34,16 @@ export class AuthService {
     const payload = { sub: userId, email };
     const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
     const refreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });
+
     const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
 
-    try {
-      const createdToken = (await this.prisma.refreshToken.create({
-        data: {
-          userId,
-          tokenHash: hashedRefreshToken,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        },
-      })) as RefreshTokenEntity;
-
-      console.log(' Refresh token saved in DB:', createdToken);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      console.error(' Error saving refresh token:', message);
-      throw new Error(message);
-    }
+    await this.prisma.refreshToken.create({
+      data: {
+        userId,
+        tokenHash: hashedRefreshToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
 
     return { accessToken, refreshToken };
   }
@@ -64,18 +58,29 @@ export class AuthService {
     password: string;
     name: string;
   }): Promise<AuthToken> {
-    const existing = (await this.usersService.findByEmail(
-      dto.email,
-    )) as UserEntity | null;
+    const existing = await this.usersService.findByEmail(dto.email, true);
     if (existing) throw new UnauthorizedException('Email already in use');
 
-    const newUser = (await this.usersService.create(dto)) as UserEntity;
-    return this.generateTokens(newUser.id, newUser.email);
+    const newUser = await this.usersService.create(dto);
+    const userWithPassword = await this.usersService.findByEmail(
+      newUser.email,
+      true,
+    );
+
+    if (!userWithPassword || !('passwordHash' in userWithPassword)) {
+      throw new UnauthorizedException('User creation failed');
+    }
+
+    return this.generateTokens(userWithPassword.id, userWithPassword.email);
   }
 
-  async refresh(userId: string, oldRefreshToken: string): Promise<AuthToken> {
+  async refresh(email: string, oldRefreshToken: string): Promise<AuthToken> {
+    const user = await this.usersService.findByEmail(email, true);
+    if (!user || !('passwordHash' in user))
+      throw new UnauthorizedException('User not found');
+
     const tokenInDb = (await this.prisma.refreshToken.findFirst({
-      where: { userId },
+      where: { userId: user.id },
     })) as RefreshTokenEntity | null;
 
     if (!tokenInDb) throw new UnauthorizedException('Refresh token not found');
@@ -85,13 +90,12 @@ export class AuthService {
 
     await this.prisma.refreshToken.delete({ where: { id: tokenInDb.id } });
 
-    const user = (await this.usersService.findById(userId)) as UserEntity;
-    if (!user) throw new UnauthorizedException('User not found');
-
     return this.generateTokens(user.id, user.email);
   }
 
-  async revokeRefreshToken(userId: string) {
-    await this.prisma.refreshToken.deleteMany({ where: { userId } });
+  async revokeRefreshToken(email: string) {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) return;
+    await this.prisma.refreshToken.deleteMany({ where: { userId: user.id } });
   }
 }
