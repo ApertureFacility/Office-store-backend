@@ -7,6 +7,7 @@ import { SuppliersModule } from './suppliers/supplires.module';
 import { AuthModule } from './auth/auth.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { CategoriesModule } from './сategories/categories.module';
+import { DeliveryModule } from './delivery/delivery.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { CategoriesModule } from './сategories/categories.module';
     AuthModule,
     ReviewsModule,
     CategoriesModule,
+    DeliveryModule,
   ],
   controllers: [AppController],
   providers: [AppService],
