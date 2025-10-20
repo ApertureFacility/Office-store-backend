@@ -1,15 +1,15 @@
 {
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": ".",
-  "testMatch": ["<rootDir>/test/**/*.e2e-spec.ts"],
+  "testMatch": [
+    "<rootDir>/test/**/*.e2e-spec.ts",
+    "<rootDir>/src/**/*.spec.ts"
+  ],
   "transform": {
     "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": "tsconfig.json" }]
   },
-"moduleNameMapper": {
-  "^prisma/(.*)$": "<rootDir>/prisma/$1",
-  "^src/(.*)$": "<rootDir>/src/$1"
-}
-
-,
+  "moduleNameMapper": {
+    "^prisma/(.*)$": "<rootDir>/prisma/$1"
+  },
   "testEnvironment": "node"
 }
