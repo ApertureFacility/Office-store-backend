@@ -22,7 +22,7 @@ async function bootstrap() {
   const config = new DocumentBuilder()
     .setTitle('Office API')
     .setDescription('Office e commerce shop doccumentation')
-    .setVersion('1.2.0')
+    .setVersion('1.2.2')
     .addBearerAuth()
     .build();
 
