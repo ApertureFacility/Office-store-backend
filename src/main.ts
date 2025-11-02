@@ -18,14 +18,25 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
-
   const config = new DocumentBuilder()
     .setTitle('Office API')
     .setDescription('Office e commerce shop doccumentation')
     .setVersion('1.2.2')
-    .addBearerAuth()
-    .build();
+    .addBearerAuth(
+      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+      'access-token',
+    )
 
+    // Basic — для логина через email:password
+    .addBasicAuth(
+      {
+        type: 'http',
+        scheme: 'basic',
+        description: 'Введите email и пароль, чтобы войти',
+      },
+      'basic-auth',
+    )
+    .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 
