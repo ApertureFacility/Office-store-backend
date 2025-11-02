@@ -92,8 +92,8 @@ export class UsersController {
     return this.usersService.findAll({
       email,
       role,
-      skip: Number(skip),
-      take: Number(take),
+      skip: Number(skip) || 0,
+      take: Number(take) || 10,
     });
   }
 }

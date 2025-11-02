@@ -1,5 +1,8 @@
-// src/users/users.service.ts
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 import { CreateUserDto, UpdateUserDto } from './users.dto';
@@ -95,7 +98,7 @@ export class UsersService {
       where.role = filters.role as Role;
     }
 
-    return this.prisma.user.findMany({
+    const users = await this.prisma.user.findMany({
       where,
       skip: filters.skip ?? 0,
       take: filters.take ?? 20,
@@ -109,6 +112,12 @@ export class UsersService {
         updatedAt: true,
       },
     });
+
+    if (!users || users.length === 0) {
+      throw new NotFoundException('Пользователи не найдены');
+    }
+
+    return users;
   }
 
   async findByEmail(
